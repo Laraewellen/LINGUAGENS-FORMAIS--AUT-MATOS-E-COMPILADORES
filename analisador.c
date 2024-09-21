@@ -1,3 +1,4 @@
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <ctype.h>
@@ -95,6 +96,7 @@ Token proximoToken(FILE *arquivoFonte, FILE *arquivoLex) {
 
     while ((c = fgetc(arquivoFonte)) != EOF) {
         coluna++;
+        printf("Lendo caractere: %c (linha %d, coluna %d)\n", c, linha, coluna); // Debugging
         switch (estado) {
             case 0:
                 if (isspace(c)) {
@@ -211,7 +213,7 @@ Token proximoToken(FILE *arquivoFonte, FILE *arquivoLex) {
         tokenAtual.linha = linha;
         tokenAtual.coluna = coluna - strlen(buffer);
         salvaTokenEmArquivo(arquivoLex, tokenAtual);
-        reportaErro("String não-fechada", linha, coluna - strlen(buffer));
+       reportaErro("String não-fechada", linha, coluna - strlen(buffer));
     }
 
     tokenAtual.tipo = CaracterDesconhecido;
