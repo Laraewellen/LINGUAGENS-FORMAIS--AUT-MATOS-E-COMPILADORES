@@ -1,7 +1,8 @@
 #include <stdio.h>
-#include <stdlib.h>
 #include <ctype.h>
 #include <string.h>
+
+#define MAX_TABELA 100
 
 typedef enum {
     Identificador, Numero, PalavraChave, OP_EQ, OP_GE, OP_MUL, OP_NE, OP_LE, OP_DIV, OP_GT, OP_AD, OP_ASS, OP_LT, OP_MIN,
@@ -11,36 +12,37 @@ typedef enum {
 typedef struct {
     TokenType tipo;
     char valor[100];
-    int linha;
-    int coluna;
+    int linha, coluna;
 } Token;
 
 typedef struct {
-    char nome[100];
+    char lexema[100];
     TokenType tipo;
 } Simbolo;
 
-const char *palavrasChave[] = {"if", "then", "else", "begin", "end", "program", "var", "integer", "real", "while"};
-Simbolo tabelaSimbolos[100];
-int numSimbolos = 0;
+Simbolo tabelaSimbolos[MAX_TABELA];
+int tamanhoTabelaSimbolos = 0;
 
-void inicializaTabelaSimbolos() {
-    for (int i = 0; i < 10; i++) {
-        strcpy(tabelaSimbolos[i].nome, palavrasChave[i]);
-        tabelaSimbolos[i].tipo = PalavraChave;
-    }
-    numSimbolos = 10;
+const char *palavrasChave[] = {"if", "then", "else", "begin", "end", "program", "var", "integer", "real", "while"};
+int numPalavrasChave = 10;
+
+// Função para imprimir caractere lido
+void imprimeCaractere(char c, int linha, int coluna) {
+    printf("Lendo caractere: %c (linha %d, coluna %d)\n", c == '\n' ? ' ' : c, linha, coluna);
 }
 
-int letra(char c) {
+// Verifica se é letra
+int ehLetra(char c) {
     return isalpha(c);
 }
 
-int digito(char c) {
+// Verifica se é dígito
+int ehDigito(char c) {
     return isdigit(c);
 }
 
-TokenType identificaOperadorSimbolo(char *buffer) {
+// Identifica o tipo de operador
+TokenType identificaOperador(char *buffer) {
     if (strcmp(buffer, "=") == 0) return OP_EQ;
     if (strcmp(buffer, ">=") == 0) return OP_GE;
     if (strcmp(buffer, "*") == 0) return OP_MUL;
@@ -52,171 +54,136 @@ TokenType identificaOperadorSimbolo(char *buffer) {
     if (strcmp(buffer, ":=") == 0) return OP_ASS;
     if (strcmp(buffer, "<") == 0) return OP_LT;
     if (strcmp(buffer, "-") == 0) return OP_MIN;
-    if (strcmp(buffer, "{") == 0 || strcmp(buffer, "}") == 0) return CaracterDesconhecido; // Comentários não permitidos
-    if (strcmp(buffer, ",") == 0) return SMB_COM;
-    if (strcmp(buffer, ";") == 0) return SMB_SEM;
-    if (strcmp(buffer, "(") == 0) return SMB_OPA;
-    if (strcmp(buffer, ")") == 0) return SMB_CPA;
     return CaracterDesconhecido;
 }
 
-int buscaNaTabelaSimbolos(char *nome) {
-    for (int i = 0; i < numSimbolos; i++) {
-        if (strcmp(tabelaSimbolos[i].nome, nome) == 0) {
-            return 1;
-        }
+// Verifica se o lexema é uma palavra-chave
+int ehPalavraChave(char *buffer) {
+    for (int i = 0; i < numPalavrasChave; i++) {
+        if (strcmp(palavrasChave[i], buffer) == 0) return 1;
     }
     return 0;
 }
 
-void adicionaNaTabelaSimbolos(char *nome, TokenType tipo) {
-    if (!buscaNaTabelaSimbolos(nome)) {
-        strcpy(tabelaSimbolos[numSimbolos].nome, nome);
-        tabelaSimbolos[numSimbolos].tipo = tipo;
-        numSimbolos++;
+// Verifica se o token já está na tabela de símbolos
+int consultaTabelaSimbolos(char *lexema) {
+    for (int i = 0; i < tamanhoTabelaSimbolos; i++) {
+        if (strcmp(tabelaSimbolos[i].lexema, lexema) == 0) return i;
+    }
+    return -1;
+}
+
+// Adiciona um token à tabela de símbolos, caso ainda não esteja presente
+void adicionaTabelaSimbolos(char *lexema, TokenType tipo) {
+    if (consultaTabelaSimbolos(lexema) == -1 && (tipo == Identificador || tipo == PalavraChave)) {
+        strcpy(tabelaSimbolos[tamanhoTabelaSimbolos].lexema, lexema);
+        tabelaSimbolos[tamanhoTabelaSimbolos].tipo = tipo;
+        tamanhoTabelaSimbolos++;
     }
 }
 
-void salvaTokenEmArquivo(FILE *arquivoLex, Token token) {
-    fprintf(arquivoLex, "<%d, %s> Linha: %d Coluna: %d\n", token.tipo, token.valor, token.linha, token.coluna);
+// Salva token no arquivo de saída
+void salvaToken(FILE *arquivoLex, Token token) {
+    fprintf(arquivoLex, "<%d, %s> Linha: %d, Coluna: %d\n", token.tipo, token.valor, token.linha, token.coluna);
 }
 
-void reportaErro(char *mensagem, int linha, int coluna) {
-    printf("Erro: %s na linha %d, coluna %d\n", mensagem, linha, coluna);
-}
-
-Token proximoToken(FILE *arquivoFonte, FILE *arquivoLex) {
-    Token tokenAtual;
-    char buffer[100];
-    int estado = 0, stringAberta = 0;
-    int linha = 1, coluna = 0;
-    char c;
-    int i = 0;
+// Função principal do analisador léxico
+void analisadorLexico(FILE *arquivoFonte, FILE *arquivoLex) {
+    char c, buffer[100];
+    int linha = 1, coluna = 0, i = 0;
+    Token token;
 
     while ((c = fgetc(arquivoFonte)) != EOF) {
         coluna++;
-        printf("Lendo caractere: %c (linha %d, coluna %d)\n", c, linha, coluna); // Debugging
-        switch (estado) {
-            case 0:
-                if (isspace(c)) {
-                    if (c == '\n') {
-                        linha++;
-                        coluna = 0;
-                    }
-                } else if (letra(c)) {
-                    estado = 1;
-                    buffer[i++] = c;
-                } else if (digito(c)) {
-                    estado = 2;
-                    buffer[i++] = c;
-                } else if (strchr("=<>+-*/{},;()", c)) {
-                    estado = 3;
-                    buffer[i++] = c;
-                } else if (c == '\'') {
-                    estado = 4;
-                    buffer[i++] = c;
-                    stringAberta = 1;
-                } else {
-                    estado = 5;
-                    buffer[i++] = c;
+        imprimeCaractere(c, linha, coluna);
+
+        if (isspace(c)) {
+            if (c == '\n') { 
+                linha++; 
+                coluna = 0;
+            }
+        } else if (c == '{') {
+            // Ignorar comentários até fechar o símbolo }
+            while ((c = fgetc(arquivoFonte)) != '}' && c != EOF) {
+                if (c == '\n') {
+                    linha++;
+                    coluna = 0;
                 }
-                break;
-            case 1:
-                if (letra(c) || digito(c)) {
-                    buffer[i++] = c;
-                } else {
-                    buffer[i] = '\0';
-                    fseek(arquivoFonte, -1, SEEK_CUR);
-                    coluna--;
-                    if (buscaNaTabelaSimbolos(buffer)) {
-                        tokenAtual.tipo = PalavraChave;
-                    } else {
-                        adicionaNaTabelaSimbolos(buffer, Identificador);
-                        tokenAtual.tipo = Identificador;
-                    }
-                    strcpy(tokenAtual.valor, buffer);
-                    tokenAtual.linha = linha;
-                    tokenAtual.coluna = coluna - strlen(buffer);
-                    salvaTokenEmArquivo(arquivoLex, tokenAtual);
-                    return tokenAtual;
-                }
-                break;
-            case 2:
-                if (digito(c)) {
-                    buffer[i++] = c;
-                } else {
-                    buffer[i] = '\0';
-                    fseek(arquivoFonte, -1, SEEK_CUR);
-                    coluna--;
-                    tokenAtual.tipo = Numero;
-                    strcpy(tokenAtual.valor, buffer);
-                    tokenAtual.linha = linha;
-                    tokenAtual.coluna = coluna - strlen(buffer);
-                    salvaTokenEmArquivo(arquivoLex, tokenAtual);
-                    return tokenAtual;
-                }
-                break;
-            case 3:
-                if ((buffer[0] == ':' && c == '=') || (buffer[0] == '<' && (c == '>' || c == '=')) || (buffer[0] == '>' && c == '=')) {
-                    buffer[i++] = c;
+                coluna++;
+            }
+        } else if (ehLetra(c)) {
+            buffer[i++] = c;
+            while ((c = fgetc(arquivoFonte)) != EOF && (ehLetra(c) || ehDigito(c))) {
+                buffer[i++] = c;
+                coluna++;
+                imprimeCaractere(c, linha, coluna);
+            }
+            buffer[i] = '\0';
+            fseek(arquivoFonte, -1, SEEK_CUR);
+            coluna--;
+
+            token.tipo = ehPalavraChave(buffer) ? PalavraChave : Identificador;
+            strcpy(token.valor, buffer);
+            token.linha = linha;
+            token.coluna = coluna - i + 1;
+            salvaToken(arquivoLex, token);
+            adicionaTabelaSimbolos(buffer, token.tipo);
+            i = 0;
+        } else if (ehDigito(c)) {
+            buffer[i++] = c;
+            while ((c = fgetc(arquivoFonte)) != EOF && ehDigito(c)) {
+                buffer[i++] = c;
+                coluna++;
+                imprimeCaractere(c, linha, coluna);
+            }
+            buffer[i] = '\0';
+            fseek(arquivoFonte, -1, SEEK_CUR);
+            coluna--;
+
+            token.tipo = Numero;
+            strcpy(token.valor, buffer);
+            token.linha = linha;
+            token.coluna = coluna - i + 1;
+            salvaToken(arquivoLex, token);
+            i = 0;
+        } else if (strchr("=<>+-*/{},;()", c)) {
+            buffer[i++] = c;
+            imprimeCaractere(c, linha, coluna);
+            if (c == ':' || c == '<' || c == '>') {
+                char prox = fgetc(arquivoFonte);
+                if ((c == ':' && prox == '=') || (c == '<' && (prox == '>' || prox == '=')) || (c == '>' && prox == '=')) {
+                    buffer[i++] = prox;
+                    coluna++;
+                    imprimeCaractere(prox, linha, coluna);
                 } else {
                     fseek(arquivoFonte, -1, SEEK_CUR);
                     coluna--;
                 }
-                buffer[i] = '\0';
-                tokenAtual.tipo = identificaOperadorSimbolo(buffer);
-                strcpy(tokenAtual.valor, buffer);
-                tokenAtual.linha = linha;
-                tokenAtual.coluna = coluna - strlen(buffer);
-                salvaTokenEmArquivo(arquivoLex, tokenAtual);
-                return tokenAtual;
-            case 4:
-                if (c == '\'') {
-                    buffer[i++] = c;
-                    buffer[i] = '\0';
-                    tokenAtual.tipo = PalavraChave;
-                    strcpy(tokenAtual.valor, buffer);
-                    tokenAtual.linha = linha;
-                    tokenAtual.coluna = coluna - strlen(buffer);
-                    salvaTokenEmArquivo(arquivoLex, tokenAtual);
-                    return tokenAtual;
-                } else if (c == '\n') {
-                    buffer[i] = '\0';
-                    tokenAtual.tipo = StringNaoFechada;
-                    strcpy(tokenAtual.valor, buffer);
-                    tokenAtual.linha = linha;
-                    tokenAtual.coluna = coluna - strlen(buffer);
-                    salvaTokenEmArquivo(arquivoLex, tokenAtual);
-                    reportaErro("String não-fechada", linha, coluna - strlen(buffer));
-                    return tokenAtual;
-                } else {
-                    buffer[i++] = c;
-                }
-                break;
-            case 5:
-                buffer[i] = '\0';
-                tokenAtual.tipo = CaracterDesconhecido;
-                strcpy(tokenAtual.valor, buffer);
-                tokenAtual.linha = linha;
-                tokenAtual.coluna = coluna - strlen(buffer);
-                salvaTokenEmArquivo(arquivoLex, tokenAtual);
-                reportaErro("Caractere desconhecido", linha, coluna - strlen(buffer));
-                return tokenAtual;
+            }
+            buffer[i] = '\0';
+            token.tipo = identificaOperador(buffer);
+            strcpy(token.valor, buffer);
+            token.linha = linha;
+            token.coluna = coluna - i + 1;
+            salvaToken(arquivoLex, token);
+            i = 0;
+        } else {
+            token.tipo = CaracterDesconhecido;
+            token.valor[0] = c;
+            token.valor[1] = '\0';
+            token.linha = linha;
+            token.coluna = coluna;
+            salvaToken(arquivoLex, token);
         }
     }
+}
 
-    if (stringAberta) {
-        buffer[i] = '\0';
-        tokenAtual.tipo = StringNaoFechada;
-        strcpy(tokenAtual.valor, buffer);
-        tokenAtual.linha = linha;
-        tokenAtual.coluna = coluna - strlen(buffer);
-        salvaTokenEmArquivo(arquivoLex, tokenAtual);
-        reportaErro("String não-fechada", linha, coluna - strlen(buffer));
+// Exibe a tabela de símbolos
+void imprimeTabelaSimbolos() {
+    printf("\nTabela de Símbolos:\n");
+    for (int i = 0; i < tamanhoTabelaSimbolos; i++) {
+        printf("Lexema: %s, Tipo: %d\n", tabelaSimbolos[i].lexema, tabelaSimbolos[i].tipo);
     }
-
-    tokenAtual.tipo = CaracterDesconhecido;
-    return tokenAtual;
 }
 
 int main() {
@@ -228,14 +195,10 @@ int main() {
         return 1;
     }
 
-    inicializaTabelaSimbolos();
-
-    while (!feof(arquivoFonte)) {
-        proximoToken(arquivoFonte, arquivoLex);
-    }
+    analisadorLexico(arquivoFonte, arquivoLex);
+    imprimeTabelaSimbolos();
 
     fclose(arquivoFonte);
     fclose(arquivoLex);
-
     return 0;
 }
