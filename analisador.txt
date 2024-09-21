@@ -8,8 +8,7 @@ type
   Token = record
     tipo: TokenType;
     valor: string;
-    linha: integer;
-    coluna: integer;
+    linha, coluna: integer;
   end;
 
   Simbolo = record
@@ -33,68 +32,58 @@ var j: integer;
 begin
   SetLength(tabelaSimbolos, 10);
   for j := 1 to 10 do
-  begin
     tabelaSimbolos[j-1].nome := palavrasChave[j];
     tabelaSimbolos[j-1].tipo := PalavraChave;
-  end;
 end;
 
 function Letra(c: char): boolean;
 begin
-  Letra := (c >= 'a') and (c <= 'z') or (c >= 'A') and (c <= 'Z');
+  Result := (c in ['a'..'z', 'A'..'Z']);
 end;
 
 function Digito(c: char): boolean;
 begin
-  Digito := (c >= '0') and (c <= '9');
+  Result := (c in ['0'..'9']);
 end;
 
 function IdentificaOperadorSimbolo(buffer: string): TokenType;
 begin
   case buffer of
-    '=': IdentificaOperadorSimbolo := OP_EQ;
-    '>=': IdentificaOperadorSimbolo := OP_GE;
-    '*': IdentificaOperadorSimbolo := OP_MUL;
-    '<>': IdentificaOperadorSimbolo := OP_NE;
-    '<=': IdentificaOperadorSimbolo := OP_LE;
-    '/': IdentificaOperadorSimbolo := OP_DIV;
-    '>': IdentificaOperadorSimbolo := OP_GT;
-    '+': IdentificaOperadorSimbolo := OP_AD;
-    ':=': IdentificaOperadorSimbolo := OP_ASS;
-    '<': IdentificaOperadorSimbolo := OP_LT;
-    '-': IdentificaOperadorSimbolo := OP_MIN;
-    '{': IdentificaOperadorSimbolo := CaracterDesconhecido; // Comentários não permitidos
-    ',': IdentificaOperadorSimbolo := SMB_COM;
-    '}': IdentificaOperadorSimbolo := CaracterDesconhecido; // Comentários não permitidos
-    ';': IdentificaOperadorSimbolo := SMB_SEM;
-    '(': IdentificaOperadorSimbolo := SMB_OPA;
-    ')': IdentificaOperadorSimbolo := SMB_CPA;
+    '=': Result := OP_EQ;
+    '>=': Result := OP_GE;
+    '*': Result := OP_MUL;
+    '<>': Result := OP_NE;
+    '<=': Result := OP_LE;
+    '/': Result := OP_DIV;
+    '>': Result := OP_GT;
+    '+': Result := OP_AD;
+    ':=': Result := OP_ASS;
+    '<': Result := OP_LT;
+    '-': Result := OP_MIN;
+    ',': Result := SMB_COM;
+    ';': Result := SMB_SEM;
+    '(': Result := SMB_OPA;
+    ')': Result := SMB_CPA;
   else
-    IdentificaOperadorSimbolo := CaracterDesconhecido;
+    Result := CaracterDesconhecido;
   end;
 end;
 
 function BuscaNaTabelaSimbolos(nome: string): boolean;
 var j: integer;
 begin
-  BuscaNaTabelaSimbolos := False;
+  Result := False;
   for j := 0 to High(tabelaSimbolos) do
     if tabelaSimbolos[j].nome = nome then
-    begin
-      BuscaNaTabelaSimbolos := True;
-      Exit;
-    end;
+      Exit(True);
 end;
 
 procedure AdicionaNaTabelaSimbolos(nome: string; tipo: TokenType);
-var novoSimbolo: Simbolo;
 begin
   if not BuscaNaTabelaSimbolos(nome) then
   begin
-    novoSimbolo.nome := nome;
-    novoSimbolo.tipo := tipo;
     SetLength(tabelaSimbolos, Length(tabelaSimbolos) + 1);
-    tabelaSimbolos[High(tabelaSimbolos)] := novoSimbolo;
+    tabelaSimbolos[High(tabelaSimbolos)] := Simbolo(nome, tipo);
   end;
 end;
 
@@ -108,16 +97,6 @@ begin
   WriteLn('Erro: ', mensagem, ' na linha ', linha, ', coluna ', coluna);
 end;
 
-procedure GerarRelatorio;
-var j: integer;
-begin
-  AssignFile(arquivoLex, 'tokens.lex');
-  Rewrite(arquivoLex);
-  for j := 0 to High(tabelaSimbolos) do
-    SalvaTokenEmArquivo(Token(tipo: tabelaSimbolos[j].tipo, valor: tabelaSimbolos[j].nome, linha: 0, coluna: 0));
-  CloseFile(arquivoLex);
-end;
-
 function ProximoToken: Token;
 var buffer: string; stringAberta: boolean;
 begin
@@ -129,55 +108,54 @@ begin
     c := codigo[i]; Inc(i); Inc(coluna);
 
     case estado of
-      0: // Estado inicial
+      0:
         if c in [' ', #9] then continue
         else if c = #10 then begin Inc(linha); coluna := 0; end
         else if Letra(c) then begin estado := 1; buffer := c; end
         else if Digito(c) then begin estado := 2; buffer := c; end
-        else if c in ['=', '<', '>', '+', '-', '*', '/', '{', ',', '}', ';', '(', ')'] then begin estado := 3; buffer := c; end
+        else if c in ['=', '<', '>', '+', '-', '*', '/', ',', ';', '(', ')'] then begin estado := 3; buffer := c; end
         else if c = '''' then begin estado := 4; buffer := c; stringAberta := True; end
         else begin estado := 5; buffer := c; end;
 
-      1: // Identificador/palavra-chave
+      1:
         if Letra(c) or Digito(c) then buffer := buffer + c
         else begin
           buffer := LowerCase(buffer);
           if BuscaNaTabelaSimbolos(buffer) then tokenAtual.tipo := PalavraChave
           else begin AdicionaNaTabelaSimbolos(buffer, Identificador); tokenAtual.tipo := Identificador; end;
           tokenAtual.valor := buffer; tokenAtual.coluna := coluna - Length(buffer);
-          SalvaTokenEmArquivo(tokenAtual); ProximoToken := tokenAtual; Exit;
+          SalvaTokenEmArquivo(tokenAtual); Exit(tokenAtual);
         end;
 
-      2: // Número
+      2:
         if Digito(c) then buffer := buffer + c
         else begin
           tokenAtual.tipo := Numero; tokenAtual.valor := buffer; tokenAtual.coluna := coluna - Length(buffer);
-          SalvaTokenEmArquivo(tokenAtual); ProximoToken := tokenAtual; Exit;
+          SalvaTokenEmArquivo(tokenAtual); Exit(tokenAtual);
         end;
 
-      3: // Operador/símbolo
+      3:
         if ((buffer = ':') and (c = '=')) or ((buffer = '<') and (c = '>')) or ((buffer = '<') and (c = '=')) or ((buffer = '>') and (c = '=')) then begin buffer := buffer + c; Inc(i); Inc(coluna); end;
         tokenAtual.tipo := IdentificaOperadorSimbolo(buffer); tokenAtual.valor := buffer; tokenAtual.coluna := coluna - Length(buffer);
-        SalvaTokenEmArquivo(tokenAtual); ProximoToken := tokenAtual; Exit;
+        SalvaTokenEmArquivo(tokenAtual); Exit(tokenAtual);
 
-      4: // String
-        if c = '''' then begin buffer := buffer + c; tokenAtual.tipo := PalavraChave; tokenAtual.valor := buffer; tokenAtual.coluna := coluna - Length(buffer); SalvaTokenEmArquivo(tokenAtual); ProximoToken := tokenAtual; Exit; end
-        else if c = #10 then begin tokenAtual.tipo := StringNaoFechada; tokenAtual.valor := buffer; tokenAtual.coluna := coluna - Length(buffer); SalvaTokenEmArquivo(tokenAtual); ReportaErro('String não-fechada', linha, coluna - Length(buffer)); ProximoToken := tokenAtual; Exit; end
+      4:
+        if c = '''' then begin tokenAtual.tipo := PalavraChave; tokenAtual.valor := buffer + c; tokenAtual.coluna := coluna - Length(buffer); SalvaTokenEmArquivo(tokenAtual); Exit(tokenAtual); end
+        else if c = #10 then begin tokenAtual.tipo := StringNaoFechada; tokenAtual.valor := buffer; tokenAtual.coluna := coluna - Length(buffer); SalvaTokenEmArquivo(tokenAtual); ReportaErro('String não-fechada', linha, coluna - Length(buffer)); Exit(tokenAtual); end
         else buffer := buffer + c;
 
-      5: // Caractere desconhecido
+      5:
         tokenAtual.tipo := CaracterDesconhecido; tokenAtual.valor := buffer; tokenAtual.coluna := coluna - Length(buffer);
-        SalvaTokenEmArquivo(tokenAtual); ReportaErro('Caractere desconhecido', linha, coluna - Length(buffer)); ProximoToken := tokenAtual; Exit;
+        SalvaTokenEmArquivo(tokenAtual); ReportaErro('Caractere desconhecido', linha, coluna - Length(buffer)); Exit(tokenAtual);
     end;
   end;
 
-  if stringAberta then begin tokenAtual.tipo := StringNaoFechada; tokenAtual.valor := buffer; tokenAtual.coluna := coluna - Length(buffer); SalvaTokenEmArquivo(tokenAtual); ReportaErro('String não-fechada', linha, coluna - Length(buffer)); ProximoToken := tokenAtual; Exit; end;
+  if stringAberta then begin tokenAtual.tipo := StringNaoFechada; tokenAtual.valor := buffer; tokenAtual.coluna := coluna - Length(buffer); SalvaTokenEmArquivo(tokenAtual); ReportaErro('String não-fechada', linha, coluna - Length(buffer)); Exit(tokenAtual); end;
 end;
 
 begin
   InicializaTabelaSimbolos;
   AssignFile(arquivoLex, 'tokens.lex');
   Rewrite(arquivoLex);
-  // Adicione o código para ler o arquivo fonte e chamar ProximoToken repetidamente
   CloseFile(arquivoLex);
 end.
