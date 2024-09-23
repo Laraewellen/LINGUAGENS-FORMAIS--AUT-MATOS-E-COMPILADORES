@@ -32,8 +32,10 @@ var j: integer;
 begin
   SetLength(tabelaSimbolos, 10);
   for j := 1 to 10 do
+  begin
     tabelaSimbolos[j-1].nome := palavrasChave[j];
     tabelaSimbolos[j-1].tipo := PalavraChave;
+  end;
 end;
 
 function Letra(c: char): boolean;
@@ -83,7 +85,8 @@ begin
   if not BuscaNaTabelaSimbolos(nome) then
   begin
     SetLength(tabelaSimbolos, Length(tabelaSimbolos) + 1);
-    tabelaSimbolos[High(tabelaSimbolos)] := Simbolo(nome, tipo);
+    tabelaSimbolos[High(tabelaSimbolos)].nome := nome;
+    tabelaSimbolos[High(tabelaSimbolos)].tipo := tipo;
   end;
 end;
 
@@ -124,14 +127,14 @@ begin
           if BuscaNaTabelaSimbolos(buffer) then tokenAtual.tipo := PalavraChave
           else begin AdicionaNaTabelaSimbolos(buffer, Identificador); tokenAtual.tipo := Identificador; end;
           tokenAtual.valor := buffer; tokenAtual.coluna := coluna - Length(buffer);
-          SalvaTokenEmArquivo(tokenAtual); Exit(tokenAtual);
+          SalvaTokenEmArquivo(tokenAtual); i := i - 1; Exit(tokenAtual);  // Volta para o último caractere não lido
         end;
 
       2:
         if Digito(c) then buffer := buffer + c
         else begin
           tokenAtual.tipo := Numero; tokenAtual.valor := buffer; tokenAtual.coluna := coluna - Length(buffer);
-          SalvaTokenEmArquivo(tokenAtual); Exit(tokenAtual);
+          SalvaTokenEmArquivo(tokenAtual); i := i - 1; Exit(tokenAtual);
         end;
 
       3:
@@ -157,5 +160,15 @@ begin
   InicializaTabelaSimbolos;
   AssignFile(arquivoLex, 'tokens.lex');
   Rewrite(arquivoLex);
+  
+  // Exemplo de inicialização
+  codigo := 'program var x := 5; begin x := 10 end.';
+  linha := 1;
+  coluna := 1;
+  i := 1;
+
+  while i <= Length(codigo) do
+    ProximoToken;
+
   CloseFile(arquivoLex);
 end.
