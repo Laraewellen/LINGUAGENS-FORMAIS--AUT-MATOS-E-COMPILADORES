@@ -1,184 +1,179 @@
 #include <stdio.h>
-#include <ctype.h>
 #include <string.h>
+#include <ctype.h>
 
-#define MAX_TABELA 100
-#define MAX_TOKEN_LENGTH 100
-
-typedef enum {
-    Identificador, Numero, PalavraChave, OP_EQ, OP_GE, OP_MUL, OP_NE, OP_LE, OP_DIV, OP_GT, OP_AD, OP_ASS, OP_LT, OP_MIN,
-    SMB_OBC, SMB_COM, SMB_CBC, SMB_SEM, SMB_OPA, SMB_CPA, StringNaoFechada, CaracterDesconhecido, EOF_TOKEN
-} TokenType;
+#define TAMANHO_MAX_LEXEMA 100
+#define TAMANHO_TABELA 100
 
 typedef struct {
-    char nome[MAX_TOKEN_LENGTH];
-    char lexema[MAX_TOKEN_LENGTH];
-    int linha, coluna;
+    char tipo[TAMANHO_MAX_LEXEMA];
+    char valor[TAMANHO_MAX_LEXEMA];
+    int linha;
+    int coluna;
 } Token;
 
 typedef struct {
-    char lexema[MAX_TOKEN_LENGTH];
-    TokenType tipo;
+    char lexema[TAMANHO_MAX_LEXEMA];
+    char tipo[TAMANHO_MAX_LEXEMA];
 } Simbolo;
 
-Simbolo tabelaSimbolos[MAX_TABELA];
-int tamanhoTabelaSimbolos = 0;
+Simbolo tabela_simbolos[TAMANHO_TABELA];
+int contador_simbolos = 0;
 
-const char *palavrasChave[] = {"if", "then", "else", "begin", "end", "program", "var", "integer", "real", "while"};
-int numPalavrasChave = 10;
+int linha = 1, coluna = 0;
 
-int linha_atual = 1, coluna_atual = 0;
+const char *palavras_chave[] = {
+    "program", "var", "integer", "real", "begin", "end",
+    "if", "then", "else", "while", "do", "write", "read", NULL
+};
 
-void reportar_erro(const char *mensagem, int linha, int coluna) {
-    printf("\033[31mErro léxico: %s na linha %d, coluna %d\033[0m\n", mensagem, linha, coluna);
+void adicionar_tabela_simbolos(const char *lexema, const char *tipo) {
+    for (int i = 0; i < contador_simbolos; i++) {
+        if (strcmp(tabela_simbolos[i].lexema, lexema) == 0) {
+            return;
+        }
+    }
+    strcpy(tabela_simbolos[contador_simbolos].lexema, lexema);
+    strcpy(tabela_simbolos[contador_simbolos].tipo, tipo);
+    contador_simbolos++;
 }
 
-int letra(char c) {
-    return isalpha(c);
-}
-
-int digito(char c) {
-    return isdigit(c);
-}
-
-int palavraChave(char *buffer) {
-    for (int i = 0; i < numPalavrasChave; i++) {
-        if (strcmp(palavrasChave[i], buffer) == 0) return 1;
+int e_palavra_chave(const char *lexema) {
+    for (int i = 0; palavras_chave[i] != NULL; i++) {
+        if (!strcmp(lexema, palavras_chave[i])) return 1;
     }
     return 0;
 }
 
-const char* identificaOperador(char *buffer) {
-    if (strcmp(buffer, "=") == 0) return "OP_EQ";
-    if (strcmp(buffer, ">=") == 0) return "OP_GE";
-    if (strcmp(buffer, "*") == 0) return "OP_MUL";
-    if (strcmp(buffer, "<>") == 0) return "OP_NE";
-    if (strcmp(buffer, "<=") == 0) return "OP_LE";
-    if (strcmp(buffer, "/") == 0) return "OP_DIV";
-    if (strcmp(buffer, ">") == 0) return "OP_GT";
-    if (strcmp(buffer, "+") == 0) return "OP_AD";
-    if (strcmp(buffer, ":=") == 0) return "OP_ASS";
-    if (strcmp(buffer, "<") == 0) return "OP_LT";
-    if (strcmp(buffer, "-") == 0) return "OP_MIN";
-    return "CaracterDesconhecido";
+void exibir_erro_lexico() {
+    printf("Erro léxico na linha %d, coluna %d\n", linha, coluna);
 }
 
-// Função para consultar se um símbolo já está na tabela de símbolos
-int consultaTabelaSimbolos(char *lexema) {
-    for (int i = 0; i < tamanhoTabelaSimbolos; i++) {
-        if (strcmp(tabelaSimbolos[i].lexema, lexema) == 0) {
-            return i;  // Retorna o índice se o símbolo já estiver na tabela
-        }
-    }
-    return -1;  // Retorna -1 se o símbolo não estiver na tabela
-}
-
-// Função para adicionar um símbolo à tabela de símbolos
-void adicionaTabelaSimbolos(char *lexema, TokenType tipo) {
-    if (consultaTabelaSimbolos(lexema) == -1 && (tipo == Identificador || tipo == PalavraChave)) {
-        strcpy(tabelaSimbolos[tamanhoTabelaSimbolos].lexema, lexema);
-        tabelaSimbolos[tamanhoTabelaSimbolos].tipo = tipo;
-        tamanhoTabelaSimbolos++;
-    }
-}
-
-Token obter_token(FILE *arquivoFonte) {
-    char c, buffer[MAX_TOKEN_LENGTH];
-    int i = 0;
+Token proximo_token(FILE *arquivo) {
     Token token;
+    char c;
+    int i = 0;
 
-    while ((c = fgetc(arquivoFonte)) != EOF) {
-        coluna_atual++;
-
+    while ((c = fgetc(arquivo)) != EOF) {
+        coluna++;
         if (isspace(c)) {
-            if (c == '\n') {
-                linha_atual++;
-                coluna_atual = 0;
-            }
+            if (c == '\n') { linha++; coluna = 0; }
             continue;
-        } else if (letra(c)) {
-            buffer[i++] = c;
-            while ((c = fgetc(arquivoFonte)) != EOF && (letra(c) || digito(c))) {
-                buffer[i++] = c;
-                coluna_atual++;
-            }
-            buffer[i] = '\0';
-            ungetc(c, arquivoFonte);
-
-            if (palavraChave(buffer)) {
-                strcpy(token.nome, "WORD");
-                adicionaTabelaSimbolos(buffer, PalavraChave);
-            } else {
-                strcpy(token.nome, "ID");
-                adicionaTabelaSimbolos(buffer, Identificador);
-            }
-            strcpy(token.lexema, buffer);
-            token.linha = linha_atual;
-            token.coluna = coluna_atual - i + 1;
-            return token;
-        } else if (digito(c)) {
-            buffer[i++] = c;
-            while ((c = fgetc(arquivoFonte)) != EOF && digito(c)) {
-                buffer[i++] = c;
-                coluna_atual++;
-            }
-            buffer[i] = '\0';
-            ungetc(c, arquivoFonte);
-
-            strcpy(token.nome, "NUM");
-            strcpy(token.lexema, buffer);
-            token.linha = linha_atual;
-            token.coluna = coluna_atual - i + 1;
-            return token;
-        } else if (strchr("=<>+-*/{},;()", c)) {
-            buffer[i++] = c;
-            if (c == ':' || c == '<' || c == '>') {
-                char prox = fgetc(arquivoFonte);
-                if ((c == ':' && prox == '=') || (c == '<' && (prox == '>' || prox == '=')) || (c == '>' && prox == '=')) {
-                    buffer[i++] = prox;
-                    coluna_atual++;
-                } else {
-                    ungetc(prox, arquivoFonte);
-                }
-            }
-            buffer[i] = '\0';
-            strcpy(token.nome, identificaOperador(buffer)); // Ajuste aqui para usar a função que retorna o nome do operador
-            strcpy(token.lexema, buffer);
-            token.linha = linha_atual;
-            token.coluna = coluna_atual - i + 1;
-            return token;
-        } else {
-            reportar_erro("Caractere não reconhecido", linha_atual, coluna_atual);
         }
+
+        if (isalpha(c)) {
+            token.valor[i++] = c;
+            while (isalnum(c = fgetc(arquivo))) token.valor[i++] = c, coluna++;
+            ungetc(c, arquivo);
+            token.valor[i] = '\0';
+            if (e_palavra_chave(token.valor)) {
+                strcpy(token.tipo, "RESERVADA");
+            } else {
+                strcpy(token.tipo, "IDENTIFICADOR");
+                adicionar_tabela_simbolos(token.valor, "IDENTIFICADOR");
+            }
+        } else if (isdigit(c)) {
+            token.valor[i++] = c;
+            while (isdigit(c = fgetc(arquivo))) token.valor[i++] = c, coluna++;
+            ungetc(c, arquivo);
+            token.valor[i] = '\0';
+            strcpy(token.tipo, "NUMERO");
+        } else {
+            token.valor[0] = c;
+            token.valor[1] = '\0';
+            switch (c) {
+                case '+': strcpy(token.tipo, "OP_AD"); break;
+                case '-': strcpy(token.tipo, "OP_MIN"); break;
+                case '*': strcpy(token.tipo, "OP_MUL"); break;
+                case '/': strcpy(token.tipo, "OP_DIV"); break;
+                case '=': strcpy(token.tipo, "OP_EQ"); break;
+                case '>': 
+                    if ((c = fgetc(arquivo)) == '=') {
+                        strcpy(token.tipo, "OP_GE");
+                        token.valor[1] = '=';
+                        token.valor[2] = '\0';
+                        coluna++;
+                    } else {
+                        ungetc(c, arquivo);
+                        strcpy(token.tipo, "OP_GT");
+                    }
+                    break;
+                case '<': 
+                    if ((c = fgetc(arquivo)) == '=') {
+                        strcpy(token.tipo, "OP_LE");
+                        token.valor[1] = '=';
+                        token.valor[2] = '\0';
+                        coluna++;
+                    } else if (c == '>') {
+                        strcpy(token.tipo, "OP_NE");
+                        token.valor[1] = '>';
+                        token.valor[2] = '\0';
+                    } else {
+                        ungetc(c, arquivo);
+                        strcpy(token.tipo, "OP_LT");
+                    }
+                    break;
+                case ';': strcpy(token.tipo, "SMB_SEM"); break;
+                case ',': strcpy(token.tipo, "SMB_COM"); break;
+                case '(': strcpy(token.tipo, "SMB_OPA"); break;
+                case ')': strcpy(token.tipo, "SMB_CPA"); break;
+                case '{': strcpy(token.tipo, "SMB_OBC"); break;
+                case '}': strcpy(token.tipo, "SMB_CBC"); break;
+                default: 
+                    exibir_erro_lexico(); 
+                    continue;
+            }
+        }
+        token.linha = linha;
+        token.coluna = coluna;
+        return token;
     }
 
-    strcpy(token.nome, "EOF");
-    strcpy(token.lexema, "EOF");
-    token.linha = linha_atual;
-    token.coluna = coluna_atual;
+    strcpy(token.tipo, "EOF");
+    token.valor[0] = '\0';
+    token.linha = linha;
+    token.coluna = coluna;
     return token;
 }
 
-void analisar_lexico(FILE *arquivoFonte, FILE *arquivoLex) {
+void realizar_analise(FILE *arquivo, FILE *saida) {
     Token token;
     do {
-        token = obter_token(arquivoFonte);
-        fprintf(arquivoLex, "<%s, %s> Linha: %d, Coluna: %d\n", token.nome, token.lexema, token.linha, token.coluna);
-    } while (strcmp(token.nome, "EOF") != 0);
+        token = proximo_token(arquivo);
+        if (strcmp(token.tipo, "EOF") != 0) {
+            fprintf(saida, "<%s, %s> na linha %d, coluna %d\n", token.tipo, token.valor, token.linha, token.coluna);
+        }
+    } while (strcmp(token.tipo, "EOF") != 0);
+
+    fprintf(saida, "\nTabela de Símbolos:\n");
+    for (int i = 0; i < contador_simbolos; i++) {
+        fprintf(saida, "<%s, %s>\n", tabela_simbolos[i].tipo, tabela_simbolos[i].lexema);
+    }
 }
 
-int main() {
-    FILE *arquivoFonte = fopen("analisador.txt", "r");
-    FILE *arquivoLex = fopen("tokens.lex", "w");
-
-    if (!arquivoFonte) {
-        printf("Erro ao abrir o arquivo fonte.\n");
+int main(int argc, char *argv[]) {
+    if (argc < 2) {
+        printf("Uso: %s <arquivo de entrada>\n", argv[0]);
+        return 1;
+    }
+    FILE *entrada = fopen(argv[1], "r");
+    if (!entrada) {
+        perror("Erro ao abrir o arquivo de entrada");
         return 1;
     }
 
-    analisar_lexico(arquivoFonte, arquivoLex);
+    char nome_saida[256];
+    snprintf(nome_saida, sizeof(nome_saida), "%s.lex", argv[1]);
+    FILE *saida = fopen(nome_saida, "w");
+    if (!saida) {
+        perror("Erro ao criar arquivo de saída");
+        fclose(entrada);
+        return 1;
+    }
 
-    fclose(arquivoFonte);
-    fclose(arquivoLex);
+    realizar_analise(entrada, saida);
+    fclose(entrada);
+    fclose(saida);
+
     return 0;
 }

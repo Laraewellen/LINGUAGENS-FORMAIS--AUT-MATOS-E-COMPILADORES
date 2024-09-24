@@ -4,6 +4,6 @@ var
 begin
     a := 5;
     b := 3;
-    resultado := a %% b;  { erro: %% não é um operador válido }
+    resultado := a %% b;  
     writeln('Resultado: ', resultado);
 end.
